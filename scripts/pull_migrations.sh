@@ -1,17 +1,24 @@
-#!/bin/bash
-
-# This script siphons all newly generated migration files from the VPS
-# back down to the local Mac so they can be committed to GitHub.
-
-echo "Connecting to VPS to siphon migration files..."
-
-for app in */ ; do
-  if [ -d "${app}migrations" ]; then
-    echo "Checking for new migrations in ${app}..."
-    scp -P 2222 -q "spectre@127.0.0.1:/home/spectre/Django-Dash/${app}migrations/*.py" "/Users/WatchDog/Dev/Django-Dash/${app}migrations/" 2>/dev/null
-  fi
+#!/usr/bin/env bash
+# Pull Python migration files into existing local app migration directories.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/transfer_common.sh"
+transfer_usage() { echo 'Usage: pull_migrations.sh --host USER@HOST --remote-root /project [--port 22] [--apply]'; }
+parse_transfer_options "$@"
+cd "$(git rev-parse --show-toplevel)"
+shopt -s nullglob
+folders=(*/migrations)
+for folder in "${folders[@]}"; do
+    check_transfer_path "$folder"
+    [[ ! -L $folder && ! -L ${folder%/migrations} ]] || { echo 'Refusing symlinked migration directory.' >&2; exit 1; }
 done
-
-echo ""
-echo "✅ All migrations successfully siphoned from the VPS!"
-echo "Run 'git status' to see the newly downloaded files."
+count=0
+for folder in "${folders[@]}"; do
+    if $apply; then
+        printf 'Pulling: %s\n' "$folder"
+        scp -B -P "$port" -- "$host:$remote_root/$folder/*.py" "./$folder/"
+    else
+        printf 'Would pull: %s:%s/%s/*.py -> ./%s/\n' "$host" "$remote_root" "$folder" "$folder"
+    fi
+    count=$((count + 1))
+done
+if $apply; then printf 'Transferred migrations for %s app(s).\n' "$count"; else printf 'Dry run: %s app(s); no connection made.\n' "$count"; fi

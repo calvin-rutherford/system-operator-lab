@@ -1,38 +1,66 @@
-# DevOps Automation Scripts 🚀
+# System Operator Lab
 
-Welcome to my personal collection of Bash automation scripts! As a backend developer, I built these tools to solve real-world CI/CD pipeline issues and streamline my daily Git and remote server workflows.
+Small Bash exercises for local Git cleanup and explicit file transfers. These are
+learning utilities, not a deployment system or a database migration runner.
+Requires Bash, Git and OpenSSH; the checks use Python 3's standard library.
 
-## 🛠️ How to Use Bash Scripts
+## Clean merged local branches
 
-In Linux/macOS, bash scripts (`.sh` files) are text files containing a series of terminal commands. To run them, you first need to give your operating system permission to execute them as an application.
+Run from the Git repository you intend to inspect. The base is required, and the
+default is a preview:
 
-### 1. Make the script executable (One-time setup)
-Before running a script for the first time, you must grant it executable permissions using the `chmod` (change mode) command:
-```bash
-chmod +x script_name.sh
+```sh
+/path/to/scripts/clean_branches.sh --base main
+/path/to/scripts/clean_branches.sh --base main --prefix feature/ --apply
 ```
 
-### 2. Run the script
-Once executable, you can run the script directly from your terminal using `./` (which tells the terminal to look in the current directory):
-```bash
-./script_name.sh
+Only local branches beginning with the literal prefix are considered. The script
+checks commit ancestry against the selected base, skips the current branch and
+branches equal to that base, and uses `git branch -d`, never force deletion.
+Git can additionally refuse a branch because its upstream differs or because it
+is checked out in another worktree. Such failures return nonzero; inspect them
+rather than adding `-D`. No remote fetch, remote deletion or age heuristic occurs.
+The preview is a snapshot; review the repository and base again before applying.
+
+## Transfer files explicitly
+
+Both scripts require a host and absolute remote project directory. Run from the
+local Git project; paths are resolved from its root. Preview does not connect.
+These examples use a reserved example hostname; substitute your own configured
+SSH host only after reviewing the preview.
+
+```sh
+/path/to/scripts/push_to_vps.sh --host user@example.invalid --remote-root /srv/project
+/path/to/scripts/pull_migrations.sh --host user@example.invalid --remote-root /srv/project
+# Add --port PORT if needed, and --apply only when ready to copy.
 ```
 
----
+- `push_to_vps.sh` selects tracked changes relative to HEAD and non-ignored
+  untracked files. NUL delimiters preserve spaces and renamed destinations.
+  Deleted files are not transferred or deleted remotely. Conflicts, symlinks and
+  unsupported paths are refused before connecting. A remote destination directory
+  must already exist; the script does not create directories or deploy services.
+- `pull_migrations.sh` copies `*.py` from the remote counterpart of each existing
+  local `*/migrations` directory. It does not execute migrations or commit them.
+- Apply can overwrite corresponding files. Inspect local changes and back up any
+  files you need before copying; review the resulting diff before committing.
+- Use modern OpenSSH with its default SFTP transport (OpenSSH 9+). Do not force
+  legacy SCP mode. Paths support letters, numbers, spaces, `_`, `.`, `/` and `-`;
+  shell metacharacters and `..` are refused. IPv6 literals are not supported.
+- Batch mode prevents interactive password prompts. SCP errors remain visible and
+  stop execution with nonzero status. A multi-file transfer is not atomic: earlier
+  files may already have copied when a later file fails. No success summary is
+  printed on failure. No personal username, port or home directory is embedded.
 
-## 📂 The Scripts
+## Validate without real hosts
 
-### 1. `push_to_vps.sh`
-**Purpose:** Intelligently pushes only modified files from a local machine to a remote VPS.
-**How it works:** Instead of blindly copying an entire project, this script uses `git status --porcelain` and `awk` to extract a clean list of specifically modified files. It then loops through that precise list and uses `scp` to push them to the server quietly in the background.
+```sh
+bash -n scripts/*.sh
+python3 -m unittest discover -s tests -v
+```
 
-### 2. `pull_migrations.sh`
-**Purpose:** Fixes a common CI/CD gap where database migrations generated on a remote server aren't synced back to version control.
-**How it works:** This script dynamically loops through every directory in a Django project. If it detects an app contains a `migrations/` folder, it connects to the VPS via SSH and pulls the generated `00XX_*.py` files back down to the local machine so they can be securely committed to GitHub.
-
-### 3. `clean_branches.sh`
-**Purpose:** Cleans up the local Git workspace by forcefully deleting old, merged feature branches.
-**How it works:** It uses command substitution `$(...)` and `grep` to filter out `main` and `dev` branches, targeting only branches prefixed with `feature/`, keeping your local repository clean and organized.
-
----
-*Built with ❤️ for better backend workflows.*
+The tests create disposable temporary Git repositories, including unmerged
+branches and linked worktrees. Transfers use a fake `scp` executable that records
+arguments and simulates failures. They do not connect to hosts or touch branches
+in a working project. Passing them establishes these bounded script behaviors,
+not a live transfer or production deployment.
