@@ -55,7 +55,7 @@ SSH host only after reviewing the preview.
 ## Validate without real hosts
 
 ```sh
-bash -n scripts/*.sh
+for script in scripts/*.sh; do bash -n "$script" || exit; done
 python3 -m unittest discover -s tests -v
 ```
 
